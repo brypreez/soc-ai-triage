@@ -135,8 +135,11 @@ Native Auth Failure Test (on 10.0.10.21)
 
 ```Bash
 ssh invalid_user@127.0.0.1
+```
+
 Direct Integration Script Test
-Bash
+
+```Bash
 echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force attack detected"}, "agent": {"id": "003", "name": "docker"}, "data": {"srcip": "203.0.113.50"}}' > /tmp/test_alert.json
 /var/ossec/integrations/custom-claude /tmp/test_alert.json
 ```
