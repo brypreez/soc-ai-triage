@@ -1,4 +1,4 @@
-# ⚙️ SOC-Claude-Automation
+# ⚙️ SOC-AI-Triage
 
 ![SIEM](https://img.shields.io/badge/SIEM-Wazuh_v4.14.8-orange.svg)
 ![Orchestration](https://img.shields.io/badge/Workflow-n8n_Docker-ff6d5a.svg)
