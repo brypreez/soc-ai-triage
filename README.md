@@ -291,6 +291,7 @@ Hardware specs, the 3-node Proxmox HA layout, VLAN 10/20/40 segmentation and the
 - [lab-soc-automation](https://github.com/brypreez/lab-soc-automation): Active Response, Wazuh detection baseline and underlying hardware infrastructure
 - [security-sentinel](https://github.com/brypreez/security-sentinel): Kubernetes automated response and alerting
 - [homelab](https://github.com/brypreez/homelab): Infrastructure-as-Code modules and personal lab architecture
+  
 **Contact:** Bryan Perez on [LinkedIn](https://www.linkedin.com/in/bryan-perez-0b23822b4/) | CyberSentinels at Miami Dade College
  
 ## License
