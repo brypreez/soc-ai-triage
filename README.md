@@ -75,6 +75,65 @@ flowchart TD
     end
 ```
 
+## 🔧 Wazuh Integration Setup (ossec.conf & Custom Script)
+
+### 1. Wazuh Manager Configuration (/var/ossec/etc/ossec.conf)
+
+Add the <integration> block inside <ossec_config> on the Wazuh Manager so matching alerts invoke /var/ossec/integrations/custom-claude with JSON alert input:
+
+```XML
+<ossec_config>
+  <integration>
+    <name>custom-claude</name>
+    <level>5</level>
+    <alert_format>json</alert_format>
+  </integration>
+</ossec_config>
+```
+
+### 2. Custom Integration Script (/var/ossec/integrations/custom-claude)
+
+Deploy the script to /var/ossec/integrations/custom-claude (or /var/ossec/integrations/custom-claude.py / .sh depending on your runner, matching the <name>custom-claude</name> prefix), set ownership to root:wazuh and mode 0750, and restart the Wazuh Manager:
+
+```Bash
+cat << 'EOF' > /var/ossec/integrations/custom-claude
+#!/usr/bin/env bash
+set -euo pipefail
+
+ALERT_FILE="${1:-}"
+N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://10.0.10.21:5678/webhook/wazuh-alert}"
+N8N_BEARER_TOKEN="${N8N_BEARER_TOKEN:-<YOUR_BEARER_TOKEN>}"
+LOG_FILE="/var/ossec/logs/integrations.log"
+
+if [[ -z "$ALERT_FILE" || ! -f "$ALERT_FILE" ]]; then
+  echo "$(date -Iseconds) [custom-claude] ERROR: Alert file missing: ${ALERT_FILE}" >> "$LOG_FILE"
+  exit 1
+fi
+
+HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
+  -X POST "$N8N_WEBHOOK_URL" \
+  -H "Authorization: Bearer ${N8N_BEARER_TOKEN}" \
+  -H "Content-Type: application/json" \
+  --data-binary "@${ALERT_FILE}")
+
+echo "$(date -Iseconds) [custom-claude] POST ${N8N_WEBHOOK_URL} -> HTTP${HTTP_CODE} (file: ${ALERT_FILE})" >> "$LOG_FILE"
+EOF
+
+chown root:wazuh /var/ossec/integrations/custom-claude
+chmod 0750 /var/ossec/integrations/custom-claude
+systemctl restart wazuh-manager
+```
+
+## Key Paths:
+
+- Wazuh Config: /var/ossec/etc/ossec.conf
+
+- Integration Script: /var/ossec/integrations/custom-claude
+
+- Integration Log: /var/ossec/logs/integrations.log
+
+- n8n Webhook Endpoint: http://10.0.10.21:5678/webhook/wazuh-alert
+
 ## AI SOC Triage Configuration (Highlight)
 
 ### 1. Claude Haiku 5.5 Request Payload
@@ -127,10 +186,12 @@ docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
 ### Direct Webhook Connectivity Check
 
 ```Bash
-curl -X POST [http://10.0.10.21:5678/webhook/wazuh-alert](http://10.0.10.21:5678/webhook/wazuh-alert) \
+
+curl -X POST http://10.0.10.21:5678/webhook/wazuh-alert \
   -H "Authorization: Bearer <YOUR_TOKEN>" \
   -H "Content-Type: application/json" \
   -d '{"rule": {"id": "1002", "level": 10, "description": "Access denied test alert"}, "agent": {"name": "lab-web-01"}, "data": {"srcip": "10.0.10.50"}}'
+
 ```
 
 ### Native Auth Failure Test (on 10.0.10.21)
@@ -155,6 +216,8 @@ echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force atta
 - Deduplication & Log Sources: Identical rapid logger lines can be deduplicated or miss /var/log/auth.log rules—use real auth failures, distinct test fields, or direct /var/ossec/integrations/custom-claude runs when validating end-to-end flow.
 
 - Docker Restart Policy: Containers in Exited (255) after a reboot need docker update --restart unless-stopped n8n so services return automatically on boot.
+
+- Safe Habits: Keep bearer tokens, Slack webhook URLs, and Anthropic API keys in n8n credentials / environment variables—never commit live secrets or .env files to Git.
 
 ## 🤝 Connect & Dig Deeper
 
