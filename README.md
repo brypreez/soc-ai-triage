@@ -1,233 +1,301 @@
 # ⚙️ SOC-AI-Triage
-
+ 
 ![SIEM](https://img.shields.io/badge/SIEM-Wazuh_v4.14.8-orange.svg)
 ![Orchestration](https://img.shields.io/badge/Workflow-n8n_Docker-ff6d5a.svg)
 ![AI Triage](https://img.shields.io/badge/AI_Triage-Claude_Haiku_5.5-blueviolet.svg)
 ![Observability](https://img.shields.io/badge/Observability-Prometheus_&_Grafana-E6522C.svg)
 ![Hypervisor](https://img.shields.io/badge/Hypervisor-Proxmox_VE_Cluster-E57000.svg)
-
-**Ground-up homelab infrastructure and AI-assisted SOC triage pipeline built for the 2026 Q4 Homelab Workshop in partnership with the Claude Ambassador Program. Combines Proxmox VE clustering, Docker services, Prometheus/Grafana/Loki observability, and Wazuh SIEM alerts routed through n8n and Claude Haiku 5.5 into Slack.**
-
-> **Spotlight:** Wazuh Agent (`10.0.10.21`) → `custom-claude` Integration → n8n Webhook → Claude Haiku 5.5 → Code Sanitizer → Slack
-
----
-
-## 🌟 Claude Ambassador Program Partnership & Workshop Scope
-Developed for the **2026 Q4 Homelab Workshop** in partnership with the **Claude Ambassador Program**, this repository captures both the **headline AI SOC triage automation** and the **full ground-up infrastructure build** required to run it reliably.
-
-Rather than starting with a pre-built VM or cloud sandbox, the workshop walked through building the stack from scratch—provisioning Proxmox VE nodes, forming a cluster, deploying Docker and Portainer, standing up Prometheus, Grafana, Loki/Promtail, Node Exporter, and PVE Exporter, and wiring Wazuh alerts into Claude Haiku 5.5 for rapid 4-line SOC triage in Slack.
-
----
-
-## 🏗️ The Philosophy: Ground-Up Resilience & Practical AI Triage
-Alert fatigue slows down incident response when raw SIEM JSON blobs demand manual parsing for every event. At the same time, AI triage is only as trustworthy as the infrastructure and telemetry feeding it.
-
-This architecture pairs **deterministic, low-latency AI log summarization** with **clean host and cluster observability**—prioritizing direct webhook integration, payload sanitization (`400 invalid_blocks` protection), and container persistence (`unless-stopped`) across power cycles.
-
----
-
-## 🖥️ Full Workshop Stack & Infrastructure
-
-> **Physical Hardware ("The Iron") & 802.1Q VLAN Topology:** This repository focuses on the Q4 observability stack and AI SOC triage workflow. For the underlying 3-node Proxmox HA hardware specs, managed switching/router layout, VLAN 10/20/40 segmentation, and Active Response (`firewall-drop`) baseline, see **[`brypreez/lab-soc-automation`](https://github.com/brypreez/lab-soc-automation#%EF%B8%8F-physical-hardware-the-iron)**.
-
-### Ground-Up Infrastructure & Observability Stack
-| Layer / Service | Role in Workshop | Notes |
-| :--- | :--- | :--- |
-| **Proxmox VE Cluster** | Hypervisor & multi-node clustering | Base virtualization & cluster management |
-| **Docker Engine** | Container runtime (`10.0.10.21`) | Hosts n8n, monitoring stack, and utility containers |
-| **Portainer CE** | Container management UI | Visual oversight of Docker containers and stacks |
-| **Prometheus** | Metrics collection & time-series DB | Scrapes infrastructure and exporter targets |
-| **Node Exporter** | Host-level Linux telemetry | CPU, memory, disk, and network metrics |
-| **PVE Exporter** | Proxmox node & guest metrics | Cluster/hypervisor health visibility |
-| **Grafana** | Dashboards & visual observability | Unified metrics and log visualization |
-| **Loki & Promtail** | Log aggregation & log shipping | Centralized log collection alongside Wazuh |
-
-### AI SOC Triage Pipeline Components
-| Component | Specification / Role | Purpose |
-| :--- | :--- | :--- |
-| **Wazuh Agent `003`** | Wazuh v4.14.8 (`10.0.10.21`) | Local log collection & security rule evaluation |
-| **Wazuh Integration** | `custom-claude` (`ossec.conf`) | Triggers on alert levels and posts JSON to n8n |
-| **n8n Engine** | Self-Hosted Docker (`n8nio/n8n:latest`) | Webhook ingestion, prompt routing & formatting |
-| **LLM Triage** | Claude Haiku 5.5 | Low-latency 4-line SOC incident summary |
-| **Alert Channel** | Slack Incoming Webhook | Block Kit SOC incident notifications |
-
----
-
-## 📐 Pipeline & Infrastructure Architecture
-
-```mermaid
-flowchart TD
-    subgraph PVE [Proxmox VE Cluster]
-        H1[Cluster Nodes & Hypervisor\nPVE Exporter]
-    end
-
-    subgraph HOST [Docker Host - 10.0.10.21]
-        WA[Wazuh Agent 003] -->|Security Alerts| WM[Wazuh Manager\ncustom-claude]
-        NE[Node Exporter] --> PROM[Prometheus]
-        H1 --> PROM
-        PT[Promtail] --> LOKI[Loki]
-        PROM --> GRAF[Grafana]
-        LOKI --> GRAF
-        WM -->|POST JSON + Bearer Token| N8N[n8n Webhook\n/webhook/wazuh-alert]
-        N8N -->|Full Alert JSON| CLAUDE[Claude Haiku 5.5\n4-Line SOC Summary]
-        CLAUDE -->|Empty / Raw Text Guard| SANITIZE[Code Node\nSanitize Slack Text]
-        SANITIZE -->|Validated Block Kit JSON| SLACK[Slack Incoming Webhook]
-    end
+ 
+**A self-hosted pipeline that sends Wazuh alerts through n8n to Claude Haiku 5.5 and posts a short triage note to Slack. Alerts are redacted before they leave the network, deduplicated, rate-capped, and never silently dropped.**
+ 
+Built for the 2026 Q4 Homelab Workshop by CyberSentinels (Miami Dade College), in partnership with the Claude Ambassador Program.
+ 
 ```
-
-## 🔧 Wazuh Integration Setup (ossec.conf & Custom Script)
-
-### 1. Wazuh Manager Configuration (/var/ossec/etc/ossec.conf)
-
-Add the <integration> block inside <ossec_config> on the Wazuh Manager so matching alerts invoke /var/ossec/integrations/custom-claude with JSON alert input:
-
-```XML
+Wazuh Manager → custom-claude → n8n webhook → redact + dedupe + cap → Claude Haiku 5.5 → escape → Slack
+```
+ 
+---
+ 
+## Design goals
+ 
+1. **Treat alert data as untrusted.** Usernames, URLs and log lines come from whoever is attacking the host. Every field is redacted, stripped of structure-faking characters, and wrapped in `<alert>` tags before it reaches the model.
+2. **Minimize what leaves the network.** Private IPs, hostnames, usernames and emails are replaced with labels (`HOST-1`, `EXTERNAL-IP-1`, `USER-1`) before the Claude call.
+3. **Never fail silently.** If Claude errors, returns nothing, or the hourly cap is hit, the alert still reaches Slack, clearly labeled as un-triaged.
+4. **Advisory only.** The model never triggers an action, and its prompt forbids suggesting automatic blocking or changes. Automated response lives in [`lab-soc-automation`](https://github.com/brypreez/lab-soc-automation).
+5. **Control cost.** Level threshold in Wazuh, duplicate suppression, a hard hourly cap, and a small `max_tokens`.
+---
+ 
+## Architecture
+ 
+```mermaid
+flowchart LR
+    subgraph DET [Detection]
+        WA[Wazuh Agent 003<br/>10.0.10.21] --> WM[Wazuh Manager]
+        WM -->|level >= 10| INT[custom-claude<br/>integration script]
+    end
+ 
+    subgraph N8N [n8n on Docker host 10.0.10.21]
+        WH[Wazuh webhook<br/>Header Auth] --> RN[Redact and normalize<br/>dedupe + hourly cap]
+        RN --> SK{Skip?}
+        SK -->|duplicate| IG[Ignored]
+        SK -->|no| DR{Dry run<br/>or capped?}
+        DR -->|no| AC[Ask Claude<br/>Haiku 5.5]
+        DR -->|yes| BS
+        AC --> BS[Build Slack message<br/>escape + fallback]
+        BS --> SL[Post to Slack]
+    end
+ 
+    INT -->|POST JSON + Bearer| WH
+```
+ 
+> The Docker host also runs the observability stack. It is context for this project, not part of the alert path. See [Lab context](#lab-context).
+ 
+---
+ 
+## Repository layout
+ 
+```
+SOC-AI-Triage/
+├── README.md
+├── LICENSE
+├── .gitignore
+├── ai-soc-analyst.n8n.json     # n8n workflow export (placeholders only, no secrets)
+├── samples/
+│   ├── wazuh.json              # made-up brute-force alert
+│   └── wazuh-injection.json    # made-up alert with prompt-injection attempts
+├── wazuh/
+│   ├── ossec-integration.xml   # <integration> block (placeholders only)
+│   └── custom-claude           # integration script
+└── docs/
+    └── img/                    # screenshots
+```
+ 
+---
+ 
+## Quick start
+ 
+### 1. Run n8n
+ 
+```bash
+docker run -d --name n8n --restart unless-stopped \
+  -p 10.0.10.21:5678:5678 \
+  -e WEBHOOK_URL=http://10.0.10.21:5678/ \
+  -v n8n_data:/home/node/.n8n \
+  docker.n8n.io/n8nio/n8n:<TESTED_VERSION>
+```
+ 
+- Bind to the lab VLAN address, not all interfaces.
+- Pin `<TESTED_VERSION>` to the version you tested (not `latest`) so rebuilds are reproducible.
+- `--restart unless-stopped` brings n8n back after a reboot. Containers without a restart policy stay in `Exited (255)`.
+Open `http://10.0.10.21:5678` and create the owner account.
+ 
+### 2. Create two credentials (Credentials → Create → Header Auth)
+ 
+| Credential name | Header name | Value |
+| :--- | :--- | :--- |
+| `Anthropic API key` | `x-api-key` | your key from the Claude Console |
+| `Wazuh webhook token` | `Authorization` | `Bearer <long random string>` |
+ 
+### 3. Import the workflow
+ 
+Workflows → Import from file → `ai-soc-analyst.n8n.json`, then:
+ 
+- Open **Wazuh webhook** and **Ask Claude** and select the matching credential.
+- Open **Post to Slack** and paste your Slack incoming-webhook URL.
+- Open **Redact and normalize** and check `MODEL` against the Console model list.
+- Leave `DRY_RUN = true` for the first run (see below).
+> ⚠️ **The Slack webhook URL is stored in the node itself, not in a credential.** After pasting it, never export or commit this workflow. The copy in this repo contains a placeholder. Before any export, replace the URL with `PASTE-YOUR-SLACK-WEBHOOK-URL-HERE`.
+ 
+### 4. Dry run, then go live
+ 
+With `DRY_RUN = true`, Claude is never called. Slack receives the redacted alert exactly as it would be sent, which lets you verify redaction before anything leaves your network.
+ 
+Activate the workflow, then test with the made-up samples:
+ 
+```bash
+curl -X POST http://10.0.10.21:5678/webhook/wazuh-alert \
+  -H "Authorization: Bearer <your token>" -H "Content-Type: application/json" \
+  -d @samples/wazuh.json
+```
+ 
+Check the Slack output, then set `DRY_RUN = false` and repeat. Also send `samples/wazuh-injection.json`: the note should rate the alert on its rule and level, not on the text in the log.
+ 
+### 5. Wazuh integration
+ 
+`/var/ossec/etc/ossec.conf` (also in `wazuh/ossec-integration.xml`):
+ 
+```xml
 <ossec_config>
   <integration>
     <name>custom-claude</name>
-    <level>5</level>
+    <hook_url>http://10.0.10.21:5678/webhook/wazuh-alert</hook_url>
+    <api_key>REPLACE_WITH_BEARER_TOKEN</api_key>
+    <level>10</level>
     <alert_format>json</alert_format>
   </integration>
 </ossec_config>
 ```
-
-### 2. Custom Integration Script (/var/ossec/integrations/custom-claude)
-
-Deploy the script to /var/ossec/integrations/custom-claude (or /var/ossec/integrations/custom-claude.py / .sh depending on your runner, matching the <name>custom-claude</name> prefix), set ownership to root:wazuh and mode 0750, and restart the Wazuh Manager:
-
-```Bash
-cat << 'EOF' > /var/ossec/integrations/custom-claude
+ 
+Wazuh passes the alert file as `$1`, `<api_key>` as `$2`, and `<hook_url>` as `$3`. Nothing is hardcoded in the script, and nothing depends on environment variables (which `wazuh-integratord` does not inherit). The real `<api_key>` stays on the manager, never in the repo.
+ 
+> The `<api_key>` here must match the **value after `Bearer `** in the `Wazuh webhook token` credential.
+ 
+`/var/ossec/integrations/custom-claude`:
+ 
+```bash
 #!/usr/bin/env bash
 set -euo pipefail
-
+ 
 ALERT_FILE="${1:-}"
-N8N_WEBHOOK_URL="${N8N_WEBHOOK_URL:-http://10.0.10.21:5678/webhook/wazuh-alert}"
-N8N_BEARER_TOKEN="${N8N_BEARER_TOKEN:-<YOUR_BEARER_TOKEN>}"
+API_KEY="${2:-}"     # <api_key> from ossec.conf
+HOOK_URL="${3:-}"    # <hook_url> from ossec.conf
 LOG_FILE="/var/ossec/logs/integrations.log"
-
+ 
+log() { echo "$(date -Iseconds) [custom-claude] $*" >> "$LOG_FILE"; }
+ 
 if [[ -z "$ALERT_FILE" || ! -f "$ALERT_FILE" ]]; then
-  echo "$(date -Iseconds) [custom-claude] ERROR: Alert file missing: ${ALERT_FILE}" >> "$LOG_FILE"
+  log "ERROR: alert file missing: ${ALERT_FILE}"
   exit 1
 fi
-
+ 
+if [[ -z "$HOOK_URL" || -z "$API_KEY" ]]; then
+  log "ERROR: hook_url or api_key not provided by ossec.conf"
+  exit 1
+fi
+ 
 HTTP_CODE=$(curl -sS -o /dev/null -w "%{http_code}" \
-  -X POST "$N8N_WEBHOOK_URL" \
-  -H "Authorization: Bearer ${N8N_BEARER_TOKEN}" \
+  --connect-timeout 5 --max-time 15 \
+  -X POST "$HOOK_URL" \
+  -H "Authorization: Bearer ${API_KEY}" \
   -H "Content-Type: application/json" \
-  --data-binary "@${ALERT_FILE}")
-
-echo "$(date -Iseconds) [custom-claude] POST ${N8N_WEBHOOK_URL} -> HTTP${HTTP_CODE} (file: ${ALERT_FILE})" >> "$LOG_FILE"
-EOF
-
+  --data-binary "@${ALERT_FILE}") || HTTP_CODE="000"
+ 
+log "POST ${HOOK_URL} -> HTTP ${HTTP_CODE} (file: ${ALERT_FILE})"
+ 
+[[ "$HTTP_CODE" =~ ^2 ]] || exit 1
+```
+ 
+Deploy:
+ 
+```bash
 chown root:wazuh /var/ossec/integrations/custom-claude
 chmod 0750 /var/ossec/integrations/custom-claude
 systemctl restart wazuh-manager
 ```
-
-## Key Paths:
-
-- Wazuh Config: /var/ossec/etc/ossec.conf
-
-- Integration Script: /var/ossec/integrations/custom-claude
-
-- Integration Log: /var/ossec/logs/integrations.log
-
-- n8n Webhook Endpoint: http://10.0.10.21:5678/webhook/wazuh-alert
-
-## AI SOC Triage Configuration (Highlight)
-
-### 1. Claude Haiku 5.5 Request Payload
-
-Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a missing sub-key so Claude always receives complete alert context:
-
-```JSON
-{
-  "model": "claude-haiku-5-5",
-  "max_tokens": 1000,
-  "system": "You are an expert SOC analyst. Analyze the following Wazuh security alert and provide a concise 4-line summary: Severity/Risk, What Happened, Source/Target, and Recommended Action.",
-  "messages": [
-    {
-      "role": "user",
-      "content": "Here is the raw Wazuh alert JSON to analyze: {{ JSON.stringify($json) }}"
-    }
-  ]
-}
+ 
+Test the script directly (bypasses the level threshold):
+ 
+```bash
+/var/ossec/integrations/custom-claude samples/wazuh.json "<YOUR_TOKEN>" "http://10.0.10.21:5678/webhook/wazuh-alert"
+tail -n 20 /var/ossec/logs/integrations.log
 ```
-### 2. Slack Block Kit Sanitization (Code Node)
-
-Placed before the Slack HTTP Request node so empty or whitespace-only responses never trigger a 400 invalid_blocks error:
-
-```JavaScript
-for (const item of $input.all()) {
-  let analysisText = item.json.message || item.json.text || item.json.output || "";
-
-  if (!analysisText || analysisText.trim() === "") {
-    analysisText = "⚠️ AI triage completed, but no detailed summary text was returned.";
-  }
-
-  item.json.sanitizedText = analysisText;
-}
-
-return $input.all();
-```
-
-### 3. Docker Container Persistence After Reboot
-
-Keep n8n and supporting services resilient across host reboots:
-
-```Bash
-docker start n8n
-docker update --restart unless-stopped n8n
-docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
-```
-
-## 🧪 Verification & Testing Commands
-
-### Direct Webhook Connectivity Check
-
-```Bash
-
-curl -X POST http://10.0.10.21:5678/webhook/wazuh-alert \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
-  -H "Content-Type: application/json" \
-  -d '{"rule": {"id": "1002", "level": 10, "description": "Access denied test alert"}, "agent": {"name": "lab-web-01"}, "data": {"srcip": "10.0.10.50"}}'
-
-```
-
-### Native Auth Failure Test (on 10.0.10.21)
-
-```Bash
-ssh invalid_user@127.0.0.1
-```
-
-### Direct Integration Script Test
-
-```Bash
-echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force attack detected"}, "agent": {"id": "003", "name": "docker"}, "data": {"srcip": "203.0.113.50"}}' > /tmp/test_alert.json
-/var/ossec/integrations/custom-claude /tmp/test_alert.json
-```
-
-## 🛠️ Lessons Learned
-
-- Empty Slack Block Text (400 invalid_blocks): Slack rejects section blocks containing "" in text.mrkdwn. A pre-Slack Code node fallback keeps alerts flowing reliably.
-
-- Missing Nested Keys: Referencing an undefined property (such as $json.request) sends {} to Claude; passing {{ JSON.stringify($json) }} preserves the full payload.
-
-- Deduplication & Log Sources: Identical rapid logger lines can be deduplicated or miss /var/log/auth.log rules—use real auth failures, distinct test fields, or direct /var/ossec/integrations/custom-claude runs when validating end-to-end flow.
-
-- Docker Restart Policy: Containers in Exited (255) after a reboot need docker update --restart unless-stopped n8n so services return automatically on boot.
-
-- Safe Habits: Keep bearer tokens, Slack webhook URLs, and Anthropic API keys in n8n credentials / environment variables—never commit live secrets or .env files to Git.
-
-## 🤝 Connect & Dig Deeper
-
-[lab-soc-automation](https://github.com/brypreez/lab-soc-automation) - Automated Active Response & Wazuh detection baseline.
-
-[security-sentinel](https://github.com/brypreez/security-sentinel) - Kubernetes automated response and alerting.
-
-[homelab](https://github.com/brypreez/homelab) - Infrastructure-as-Code modules and lab architecture.
-
-Contact: Bryan Perez on LinkedIn: https://www.linkedin.com/in/bryan-perez-0b23822b4/ | Organization: CyberSentinels at Miami Dade College (in partnership with the Claude Ambassador Program).
-
-## ⚖️ License
-Distributed under the MIT License. See LICENSE for more information.
+ 
+A single failed login (`ssh invalid_user@127.0.0.1`) is a level 5 event and will **not** be forwarded at the level 10 threshold. Repeat the attempt several times quickly to trip the brute-force rule, or temporarily lower `<level>` while testing.
+ 
+---
+ 
+## How the workflow behaves
+ 
+| Node | What it does |
+| :--- | :--- |
+| **Wazuh webhook** | Receives the alert. Header Auth required. |
+| **Redact and normalize** | Keeps only useful fields, replaces private data with labels, strips control characters, `<`, `>` and backticks from every value, builds the prompt, applies dedupe and the hourly cap |
+| **Skip?** | Duplicates inside the dedupe window go to *Ignored* |
+| **Dry run?** | Dry-run and capped alerts skip Claude and go straight to Slack |
+| **Ask Claude** | Calls the Messages API (30 s timeout, 1 retry, continues on error) |
+| **Build Slack message** | Uses the AI note or a labeled fallback, restores real values (optional), escapes Slack control characters |
+| **Post to Slack** | Sends the Block Kit message |
+ 
+Settings live at the top of the two Code nodes: `DRY_RUN`, `DEDUPE_SECONDS`, `MAX_CALLS_PER_HOUR`, `MAX_TOKENS`, `MODEL`, `KEEP_HOSTNAMES`, and in the Slack node `RESTORE_LABELS`.
+ 
+### What Slack shows in each case
+ 
+| Situation | Slack message |
+| :--- | :--- |
+| Normal | AI triage note, labeled "AI-generated, verify against the raw alert" |
+| Claude error, timeout, or empty reply | ⚠️ "AI triage unavailable" plus the raw alert |
+| Hourly cap reached | ⛔ "Not triaged: hourly cap reached" plus the raw alert |
+| Duplicate inside the window | Nothing (intentional) |
+| Dry run | The exact redacted text that would be sent |
+ 
+### Labels vs. real values
+ 
+Claude only ever sees labels. In Slack, `RESTORE_LABELS = true` swaps them back to the real hosts, IPs and users, since the note is useless to an analyst if it says "HOST-1". Set it to `false` to keep labels in Slack too.
+ 
+---
+ 
+## Security model
+ 
+| Threat | Mitigation | Residual risk |
+| :--- | :--- | :--- |
+| Prompt injection via alert fields | Field allowlist, `<alert>` delimiters, system prompt declares content untrusted, newlines/`<>`/backticks stripped so fields cannot fake structure or close the tag, usernames replaced with labels | Delimiting reduces but does not eliminate injection. The output is advisory and triggers nothing. |
+| Slack mention/link injection | `&`, `<`, `>` escaped before posting | Bare URLs may still auto-link |
+| Data leaving the network | Redaction of private/public IPs, emails, hostnames, `srcuser`/`dstuser` | Best-effort. See limits below. |
+| Runaway cost | Level threshold, dedupe, hourly cap, `max_tokens: 400` | Cap counts calls made, not dollars. Set a spend limit in the Console too. |
+| Secrets in Git | Placeholders in the repo; keys in n8n credentials | Slack URL lives inside the workflow (see Quick start) |
+| Unauthenticated webhook | Header Auth credential | Plain HTTP on the lab VLAN. Add TLS if it ever leaves it. |
+ 
+### Redaction limits (read before using real data)
+ 
+Redaction is pattern-based and best-effort, not a guarantee. Known gaps: IPv6 addresses and MAC addresses are not redacted; hostnames other than the alert's agent name are not recognized; usernames are only redacted when they appear in `srcuser`/`dstuser`. Use made-up data for demos and review a dry run before enabling this on real alerts.
+ 
+### Operational notes
+ 
+- **Dedupe and the cap use n8n static data**, which only persists while the workflow is **Active** (manual test runs don't count).
+- **Concurrent alerts can slip past dedupe and the cap.** Static data is saved when an execution finishes, so a burst of simultaneous identical alerts may each pass. The cap is a soft limit.
+- **The webhook answers immediately.** Wazuh's log shows `HTTP 200` once n8n accepts the alert, which does not prove Claude or Slack succeeded. Check n8n execution history for downstream failures.
+- **Wazuh remains the system of record.** This pipeline is a notification layer.
+---
+ 
+## Status
+ 
+<!--
+TODO: update this section after your live run.
+Suggested: date, n8n version, what you verified end to end (import, Claude call, Slack post,
+dry run, injection sample, failure path, cap path).
+-->
+ 
+- Code-node logic (redaction, dedupe, hourly cap, fallbacks, Slack escaping) exercised in Node with mocked n8n inputs and the two sample alerts.
+- **Not yet verified:** import into a live n8n, the real Claude call, the Slack post. Do a full dry run before relying on it.
+## Sample output
+ 
+<!--
+TODO: add a screenshot of a real Slack message, e.g.
+![Slack triage note](docs/img/slack-triage.png)
+and rough numbers from your own runs (latency from webhook to Slack, cost per 1,000 alerts at your threshold).
+-->
+ 
+---
+ 
+## Lab context
+ 
+The alert path runs on a ground-up homelab:
+ 
+- **Virtualization:** Proxmox VE cluster
+- **Container host:** Docker Engine on `10.0.10.21` with Portainer CE
+- **Metrics:** Prometheus scraping Node Exporter and PVE Exporter
+- **Logs and dashboards:** Loki and Promtail, visualized in Grafana
+- **Detection:** Wazuh v4.14.8 (Agent `003` on the Docker host)
+Hardware specs, the 3-node Proxmox HA layout, VLAN 10/20/40 segmentation and the Active Response baseline are in [`brypreez/lab-soc-automation`](https://github.com/brypreez/lab-soc-automation#%EF%B8%8F-physical-hardware-the-iron).
+ 
+---
+ 
+## Lessons learned
+ 
+- **Slack rejects empty section text (`400 invalid_blocks`).** The fallback must also be honest: a "triage complete" message with no content hides a failure.
+- **Wazuh integrations don't inherit shell env vars.** Use `<hook_url>` and `<api_key>` and read them from script arguments.
+- **Build the prompt in a Code node.** Referencing an undefined sub-key sent `{}` to the model; explicit field handling avoids that and keeps webhook headers (including the bearer token) out of the prompt.
+- **Test alerts can be deduplicated or miss rules.** Validate with direct script runs, distinct fields, or repeated real auth failures.
+- **A cap that silently drops alerts is a hidden outage.** Over-cap alerts are posted untriaged instead.
+---
+ 
+## Related projects
+ 
+- [lab-soc-automation](https://github.com/brypreez/lab-soc-automation): Active Response, Wazuh detection baseline and underlying hardware infrastructure
+- [security-sentinel](https://github.com/brypreez/security-sentinel): Kubernetes automated response and alerting
+- [homelab](https://github.com/brypreez/homelab): Infrastructure-as-Code modules and personal lab architecture
+**Contact:** Bryan Perez on [LinkedIn](https://www.linkedin.com/in/bryan-perez-0b23822b4/) | CyberSentinels at Miami Dade College
+ 
+## License
+ 
+Distributed under the MIT License. See `LICENSE` for details.
