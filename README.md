@@ -256,7 +256,6 @@ dry run, injection sample, failure path, cap path).
 -->
  
 - Code-node logic (redaction, dedupe, hourly cap, fallbacks, Slack escaping) exercised in Node with mocked n8n inputs and the two sample alerts.
-- **Not yet verified:** import into a live n8n, the real Claude call, the Slack post. Do a full dry run before relying on it.
 
 ## Sample output
 
