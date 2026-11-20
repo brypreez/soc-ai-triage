@@ -260,13 +260,12 @@ dry run, injection sample, failure path, cap path).
 
 ## Sample output
 
-``` 
 <!--
 TODO: add a screenshot of a real Slack message, e.g.
 ![Slack triage note](docs/img/slack-triage.png)
 and rough numbers from your own runs (latency from webhook to Slack, cost per 1,000 alerts at your threshold).
 -->
-```
+
  
 ---
  
