@@ -8,7 +8,7 @@
  
 **A self-hosted pipeline that sends Wazuh alerts through n8n to Claude Haiku 5.5 and posts a short triage note to Slack. Alerts are redacted before they leave the network, deduplicated, rate-capped, and never silently dropped.**
  
-Built for the 2026 Q4 Homelab Workshop by CyberSentinels (Miami Dade College), in partnership with the Claude Ambassador Program.
+Built for the 2026 Q4 Homelab Workshop by Bryan Perez - CyberSentinels (Miami Dade College), in partnership with the Claude Ambassador Program.
  
 ```
 Wazuh Manager → custom-claude → n8n webhook → redact + dedupe + cap → Claude Haiku 5.5 → escape → Slack
@@ -48,7 +48,7 @@ flowchart LR
     INT -->|POST JSON + Bearer| WH
 ```
  
-> The Docker host also runs the observability stack. It is context for this project, not part of the alert path. See [Lab context](#lab-context).
+> The Docker host also runs the observability stack. It is context for this project, not part of the alert path.
  
 ---
  
@@ -260,13 +260,8 @@ dry run, injection sample, failure path, cap path).
 
 ## Sample output
 
-<!--
-TODO: add a screenshot of a real Slack message, e.g.
-![Slack triage note](docs/img/slack-triage.png)
-and rough numbers from your own runs (latency from webhook to Slack, cost per 1,000 alerts at your threshold).
--->
+<img width="1892" height="1016" alt="image" src="https://github.com/user-attachments/assets/c4f54303-6ff3-4804-91bf-5c20dbac7a8d" />
 
- 
 ---
  
 ## Lab context
