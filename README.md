@@ -28,6 +28,8 @@ This architecture pairs **deterministic, low-latency AI log summarization** with
 
 ## 🖥️ Full Workshop Stack & Infrastructure
 
+> **Physical Hardware ("The Iron") & 802.1Q VLAN Topology:** This repository focuses on the Q4 observability stack and AI SOC triage workflow. For the underlying 3-node Proxmox HA hardware specs, managed switching/router layout, VLAN 10/20/40 segmentation, and Active Response (`firewall-drop`) baseline, see **[`brypreez/lab-soc-automation`](https://github.com/brypreez/lab-soc-automation#%EF%B8%8F-physical-hardware-the-iron)**.
+
 ### Ground-Up Infrastructure & Observability Stack
 | Layer / Service | Role in Workshop | Notes |
 | :--- | :--- | :--- |
@@ -75,7 +77,7 @@ flowchart TD
 
 ## AI SOC Triage Configuration (Highlight)
 
-## 1. Claude Haiku 5.5 Request Payload
+### 1. Claude Haiku 5.5 Request Payload
 
 Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a missing sub-key so Claude always receives complete alert context:
 
@@ -92,7 +94,7 @@ Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a 
   ]
 }
 ```
-## 2. Slack Block Kit Sanitization (Code Node)
+### 2. Slack Block Kit Sanitization (Code Node)
 
 Placed before the Slack HTTP Request node so empty or whitespace-only responses never trigger a 400 invalid_blocks error:
 
@@ -110,7 +112,7 @@ for (const item of $input.all()) {
 return $input.all();
 ```
 
-## 3. Docker Container Persistence After Reboot
+### 3. Docker Container Persistence After Reboot
 
 Keep n8n and supporting services resilient across host reboots:
 
@@ -122,7 +124,7 @@ docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
 
 ## 🧪 Verification & Testing Commands
 
-Direct Webhook Connectivity Check
+### Direct Webhook Connectivity Check
 
 ```Bash
 curl -X POST [http://10.0.10.21:5678/webhook/wazuh-alert](http://10.0.10.21:5678/webhook/wazuh-alert) \
@@ -131,13 +133,13 @@ curl -X POST [http://10.0.10.21:5678/webhook/wazuh-alert](http://10.0.10.21:5678
   -d '{"rule": {"id": "1002", "level": 10, "description": "Access denied test alert"}, "agent": {"name": "lab-web-01"}, "data": {"srcip": "10.0.10.50"}}'
 ```
 
-Native Auth Failure Test (on 10.0.10.21)
+### Native Auth Failure Test (on 10.0.10.21)
 
 ```Bash
 ssh invalid_user@127.0.0.1
 ```
 
-Direct Integration Script Test
+### Direct Integration Script Test
 
 ```Bash
 echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force attack detected"}, "agent": {"id": "003", "name": "docker"}, "data": {"srcip": "203.0.113.50"}}' > /tmp/test_alert.json
@@ -146,13 +148,13 @@ echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force atta
 
 ## 🛠️ Lessons Learned
 
-Empty Slack Block Text (400 invalid_blocks): Slack rejects section blocks containing "" in text.mrkdwn. A pre-Slack Code node fallback keeps alerts flowing reliably.
+- Empty Slack Block Text (400 invalid_blocks): Slack rejects section blocks containing "" in text.mrkdwn. A pre-Slack Code node fallback keeps alerts flowing reliably.
 
-Missing Nested Keys: Referencing an undefined property (such as $json.request) sends {} to Claude; passing {{ JSON.stringify($json) }} preserves the full payload.
+- Missing Nested Keys: Referencing an undefined property (such as $json.request) sends {} to Claude; passing {{ JSON.stringify($json) }} preserves the full payload.
 
-Deduplication & Log Sources: Identical rapid logger lines can be deduplicated or miss /var/log/auth.log rules—use real auth failures, distinct test fields, or direct /var/ossec/integrations/custom-claude runs when validating end-to-end flow.
+- Deduplication & Log Sources: Identical rapid logger lines can be deduplicated or miss /var/log/auth.log rules—use real auth failures, distinct test fields, or direct /var/ossec/integrations/custom-claude runs when validating end-to-end flow.
 
-Docker Restart Policy: Containers in Exited (255) after a reboot need docker update --restart unless-stopped n8n so services return automatically on boot.
+- Docker Restart Policy: Containers in Exited (255) after a reboot need docker update --restart unless-stopped n8n so services return automatically on boot.
 
 ## 🤝 Connect & Dig Deeper
 
