@@ -79,7 +79,7 @@ flowchart TD
 
 Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a missing sub-key so Claude always receives complete alert context:
 
-```
+```JSON
 {
   "model": "claude-haiku-5-5",
   "max_tokens": 1000,
@@ -96,7 +96,7 @@ Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a 
 
 Placed before the Slack HTTP Request node so empty or whitespace-only responses never trigger a 400 invalid_blocks error:
 
-```
+```JavaScript
 for (const item of $input.all()) {
   let analysisText = item.json.message || item.json.text || item.json.output || "";
 
@@ -114,7 +114,7 @@ return $input.all();
 
 Keep n8n and supporting services resilient across host reboots:
 
-```
+```Bash
 docker start n8n
 docker update --restart unless-stopped n8n
 docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
@@ -124,7 +124,7 @@ docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
 
 Direct Webhook Connectivity Check
 
-```
+```Bash
 curl -X POST [http://10.0.10.21:5678/webhook/wazuh-alert](http://10.0.10.21:5678/webhook/wazuh-alert) \
   -H "Authorization: Bearer <YOUR_TOKEN>" \
   -H "Content-Type: application/json" \
@@ -133,7 +133,7 @@ curl -X POST [http://10.0.10.21:5678/webhook/wazuh-alert](http://10.0.10.21:5678
 
 Native Auth Failure Test (on 10.0.10.21)
 
-```
+```Bash
 ssh invalid_user@127.0.0.1
 Direct Integration Script Test
 Bash
