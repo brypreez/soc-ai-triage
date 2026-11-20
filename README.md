@@ -141,7 +141,7 @@ echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force atta
 /var/ossec/integrations/custom-claude /tmp/test_alert.json
 ```
 
-## 🛠️ Lessons Learned & Gotchas
+## 🛠️ Lessons Learned
 
 Empty Slack Block Text (400 invalid_blocks): Slack rejects section blocks containing "" in text.mrkdwn. A pre-Slack Code node fallback keeps alerts flowing reliably.
 
