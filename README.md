@@ -156,7 +156,7 @@ Docker Restart Policy: Containers in Exited (255) after a reboot need docker upd
 
 ## 🤝 Connect & Dig Deeper
 
-[sentinel-soc-automation](https://github.com/brypreez/sentinel-soc-automation) - Automated Active Response & Wazuh detection baseline.
+[lab-soc-automation](https://github.com/brypreez/lab-soc-automation) - Automated Active Response & Wazuh detection baseline.
 
 [security-sentinel](https://github.com/brypreez/security-sentinel) - Kubernetes automated response and alerting.
 
