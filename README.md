@@ -73,9 +73,10 @@ flowchart TD
     end
 ```
 
-AI SOC Triage Configuration (Highlight)
+## AI SOC Triage Configuration (Highlight)
 
-1. Claude Haiku 5.5 Request Payload
+## 1. Claude Haiku 5.5 Request Payload
+
 Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a missing sub-key so Claude always receives complete alert context:
 
 ```JSON
@@ -90,10 +91,12 @@ Pass the full incoming alert payload ({{ JSON.stringify($json) }}) instead of a 
     }
   ]
 }
-2. Slack Block Kit Sanitization (Code Node)
+```
+## 2. Slack Block Kit Sanitization (Code Node)
+
 Placed before the Slack HTTP Request node so empty or whitespace-only responses never trigger a 400 invalid_blocks error:
 
-JavaScript
+```
 for (const item of $input.all()) {
   let analysisText = item.json.message || item.json.text || item.json.output || "";
 
@@ -107,7 +110,8 @@ for (const item of $input.all()) {
 return $input.all();
 ```
 
-3. Docker Container Persistence After Reboot
+## 3. Docker Container Persistence After Reboot
+
 Keep n8n and supporting services resilient across host reboots:
 
 ```Bash
@@ -116,7 +120,8 @@ docker update --restart unless-stopped n8n
 docker inspect n8n --format='{{.HostConfig.RestartPolicy.Name}}'
 ```
 
-🧪 Verification & Testing Commands
+## 🧪 Verification & Testing Commands
+
 Direct Webhook Connectivity Check
 
 ```Bash
@@ -136,7 +141,7 @@ echo '{"rule": {"id": "5716", "level": 10, "description": "SSHD brute force atta
 /var/ossec/integrations/custom-claude /tmp/test_alert.json
 ```
 
-🛠️ Lessons Learned & Gotchas
+## 🛠️ Lessons Learned & Gotchas
 
 Empty Slack Block Text (400 invalid_blocks): Slack rejects section blocks containing "" in text.mrkdwn. A pre-Slack Code node fallback keeps alerts flowing reliably.
 
@@ -146,7 +151,7 @@ Deduplication & Log Sources: Identical rapid logger lines can be deduplicated or
 
 Docker Restart Policy: Containers in Exited (255) after a reboot need docker update --restart unless-stopped n8n so services return automatically on boot.
 
-🤝 Connect & Dig Deeper
+## 🤝 Connect & Dig Deeper
 
 [sentinel-soc-automation](https://github.com/brypreez/sentinel-soc-automation) - Automated Active Response & Wazuh detection baseline.
 
@@ -156,5 +161,5 @@ Docker Restart Policy: Containers in Exited (255) after a reboot need docker upd
 
 Contact: Bryan Perez on LinkedIn: https://www.linkedin.com/in/bryan-perez-0b23822b4/ | Organization: CyberSentinels at Miami Dade College (in partnership with the Claude Ambassador Program).
 
-⚖️ License
+## ⚖️ License
 Distributed under the MIT License. See LICENSE for more information.
