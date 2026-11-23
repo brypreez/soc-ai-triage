@@ -16,7 +16,7 @@ Wazuh Manager → custom-claude → n8n webhook → redact + dedupe + cap → Cl
  
 ---
  
-## Design goals
+## Design Goals
  
 1. **Treat alert data as untrusted.** Usernames, URLs and log lines come from whoever is attacking the host. Every field is redacted, stripped of structure-faking characters, and wrapped in `<alert>` tags before it reaches the model.
 2. **Minimize what leaves the network.** Private IPs, hostnames, usernames and emails are replaced with labels (`HOST-1`, `EXTERNAL-IP-1`, `USER-1`) before the Claude call.
@@ -52,7 +52,7 @@ flowchart LR
  
 ---
  
-## Repository layout
+## Repository Layout
  
 ```
 SOC-AI-Triage/
@@ -72,7 +72,7 @@ SOC-AI-Triage/
  
 ---
  
-## Quick start
+## Quick Start
  
 ### 1. Run n8n
  
@@ -89,14 +89,14 @@ docker run -d --name n8n --restart unless-stopped \
 - `--restart unless-stopped` brings n8n back after a reboot. Containers without a restart policy stay in `Exited (255)`.
 Open `http://10.0.10.21:5678` and create the owner account.
  
-### 2. Create two credentials (Credentials → Create → Header Auth)
+### 2. Create Two Credentials (Credentials → Create → Header Auth)
  
 | Credential name | Header name | Value |
 | :--- | :--- | :--- |
 | `Anthropic API key` | `x-api-key` | your key from the Claude Console |
 | `Wazuh webhook token` | `Authorization` | `Bearer <long random string>` |
  
-### 3. Import the workflow
+### 3. Import The Workflow
  
 Workflows → Import from file → `ai-soc-analyst.n8n.json`, then:
  
@@ -106,7 +106,7 @@ Workflows → Import from file → `ai-soc-analyst.n8n.json`, then:
 - Leave `DRY_RUN = true` for the first run (see below).
 > ⚠️ **The Slack webhook URL is stored in the node itself, not in a credential.** After pasting it, never export or commit this workflow. The copy in this repo contains a placeholder. Before any export, replace the URL with `PASTE-YOUR-SLACK-WEBHOOK-URL-HERE`.
  
-### 4. Dry run, then go live
+### 4. Dry Run, Then Go Live
  
 With `DRY_RUN = true`, Claude is never called. Slack receives the redacted alert exactly as it would be sent, which lets you verify redaction before anything leaves your network.
  
@@ -120,7 +120,7 @@ curl -X POST http://10.0.10.21:5678/webhook/wazuh-alert \
  
 Check the Slack output, then set `DRY_RUN = false` and repeat. Also send `samples/wazuh-injection.json`: the note should rate the alert on its rule and level, not on the text in the log.
  
-### 5. Wazuh integration
+### 5. Wazuh Integration
  
 `/var/ossec/etc/ossec.conf` (also in `wazuh/ossec-integration.xml`):
  
@@ -194,23 +194,23 @@ A single failed login (`ssh invalid_user@127.0.0.1`) is a level 5 event and will
  
 ---
  
-## How the workflow behaves
+## How The Workflow Behaves
  
 | Node | What it does |
 | :--- | :--- |
-| **Wazuh webhook** | Receives the alert. Header Auth required. |
-| **Redact and normalize** | Keeps only useful fields, replaces private data with labels, strips control characters, `<`, `>` and backticks from every value, builds the prompt, applies dedupe and the hourly cap |
+| **Wazuh Webhook** | Receives the alert. Header Auth required. |
+| **Redact and Normalize** | Keeps only useful fields, replaces private data with labels, strips control characters, `<`, `>` and backticks from every value, builds the prompt, applies dedupe and the hourly cap |
 | **Skip?** | Duplicates inside the dedupe window go to *Ignored* |
-| **Dry run?** | Dry-run and capped alerts skip Claude and go straight to Slack |
+| **Dry Run?** | Dry-run and capped alerts skip Claude and go straight to Slack |
 | **Ask Claude** | Calls the Messages API (30 s timeout, 1 retry, continues on error) |
-| **Build Slack message** | Uses the AI note or a labeled fallback, restores real values (optional), escapes Slack control characters |
+| **Build Slack Message** | Uses the AI note or a labeled fallback, restores real values (optional), escapes Slack control characters |
 | **Post to Slack** | Sends the Block Kit message |
  
 Settings live at the top of the two Code nodes: `DRY_RUN`, `DEDUPE_SECONDS`, `MAX_CALLS_PER_HOUR`, `MAX_TOKENS`, `MODEL`, `KEEP_HOSTNAMES`, and in the Slack node `RESTORE_LABELS`.
  
-### What Slack shows in each case
+### What Slack Shows In Each Case
  
-| Situation | Slack message |
+| Situation | Slack Message |
 | :--- | :--- |
 | Normal | AI triage note, labeled "AI-generated, verify against the raw alert" |
 | Claude error, timeout, or empty reply | ⚠️ "AI triage unavailable" plus the raw alert |
@@ -218,15 +218,15 @@ Settings live at the top of the two Code nodes: `DRY_RUN`, `DEDUPE_SECONDS`, `MA
 | Duplicate inside the window | Nothing (intentional) |
 | Dry run | The exact redacted text that would be sent |
  
-### Labels vs. real values
+### Labels vs. Real Values
  
 Claude only ever sees labels. In Slack, `RESTORE_LABELS = true` swaps them back to the real hosts, IPs and users, since the note is useless to an analyst if it says "HOST-1". Set it to `false` to keep labels in Slack too.
  
 ---
  
-## Security model
+## Security Model
  
-| Threat | Mitigation | Residual risk |
+| Threat | Mitigation | Residual Risk |
 | :--- | :--- | :--- |
 | Prompt injection via alert fields | Field allowlist, `<alert>` delimiters, system prompt declares content untrusted, newlines/`<>`/backticks stripped so fields cannot fake structure or close the tag, usernames replaced with labels | Delimiting reduces but does not eliminate injection. The output is advisory and triggers nothing. |
 | Slack mention/link injection | `&`, `<`, `>` escaped before posting | Bare URLs may still auto-link |
@@ -235,11 +235,11 @@ Claude only ever sees labels. In Slack, `RESTORE_LABELS = true` swaps them back 
 | Secrets in Git | Placeholders in the repo; keys in n8n credentials | Slack URL lives inside the workflow (see Quick start) |
 | Unauthenticated webhook | Header Auth credential | Plain HTTP on the lab VLAN. Add TLS if it ever leaves it. |
  
-### Redaction limits (read before using real data)
+### Redaction Limits (read before using real data)
  
 Redaction is pattern-based and best-effort, not a guarantee. Known gaps: IPv6 addresses and MAC addresses are not redacted; hostnames other than the alert's agent name are not recognized; usernames are only redacted when they appear in `srcuser`/`dstuser`. Use made-up data for demos and review a dry run before enabling this on real alerts.
  
-### Operational notes
+### Operational Notes
  
 - **Dedupe and the cap use n8n static data**, which only persists while the workflow is **Active** (manual test runs don't count).
 - **Concurrent alerts can slip past dedupe and the cap.** Static data is saved when an execution finishes, so a burst of simultaneous identical alerts may each pass. The cap is a soft limit.
@@ -263,7 +263,7 @@ dry run, injection sample, failure path, cap path).
 
 ---
  
-## Lab context
+## Lab Context
  
 The alert path runs on a ground-up homelab:
  
@@ -276,7 +276,7 @@ Hardware specs, the 3-node Proxmox HA layout, VLAN 10/20/40 segmentation and the
  
 ---
  
-## Lessons learned
+## Lessons Learned
  
 - **Slack rejects empty section text (`400 invalid_blocks`).** The fallback must also be honest: a "triage complete" message with no content hides a failure.
 - **Wazuh integrations don't inherit shell env vars.** Use `<hook_url>` and `<api_key>` and read them from script arguments.
@@ -285,7 +285,7 @@ Hardware specs, the 3-node Proxmox HA layout, VLAN 10/20/40 segmentation and the
 - **A cap that silently drops alerts is a hidden outage.** Over-cap alerts are posted untriaged instead.
 ---
  
-## Related projects
+## Related Projects
  
 - [lab-soc-automation](https://github.com/brypreez/lab-soc-automation): Active Response, Wazuh detection baseline and underlying hardware infrastructure
 - [security-sentinel](https://github.com/brypreez/security-sentinel): Kubernetes automated response and alerting
