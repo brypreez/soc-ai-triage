@@ -257,7 +257,7 @@ dry run, injection sample, failure path, cap path).
  
 - Code-node logic (redaction, dedupe, hourly cap, fallbacks, Slack escaping) exercised in Node with mocked n8n inputs and the two sample alerts.
 
-## Sample output
+## Sample Output
 
 <img width="1892" height="1016" alt="image" src="https://github.com/user-attachments/assets/c4f54303-6ff3-4804-91bf-5c20dbac7a8d" />
 
